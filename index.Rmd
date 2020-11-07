@@ -1,0 +1,142 @@
+---
+title: "Practical machine learning in R"
+author: "Marek Paulik"
+date: "November 1, 2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache = TRUE, comment = NA, message = FALSE, warning = FALSE)
+```
+
+## Load Data and libraries
+```{r}
+pml_training <- read.csv("C:/Users/Marek/Documents/R/pml-training.csv")
+testing <- read.csv("C:/Users/Marek/Documents/R/pml-testing.csv")
+library(ggplot2)
+library(dplyr)
+library(caret)
+library(naniar)
+library(doSNOW)
+library(randomForest)
+```
+
+## Exploratory analysis and preprocessing
+
+
+
+# Data partition
+
+We create a trainnig and validation set.
+```{r}
+inTrain <- createDataPartition(pml_training$classe, p=0.7, list = FALSE)
+training <- pml_training[inTrain,]
+validation <- pml_training[-inTrain,]
+```
+
+Dimensions of train, validation and test set.
+```{r}
+dim(training)
+dim(validation)
+dim(testing)
+```
+
+
+
+100 of variables have just around 600 obserations filled, otherwise they are blank or N/A. I remove all these variables. Furthermore, I remove first 5 columns which are not essential for prediction of the variable classe.
+```{r}
+
+
+
+training <- training %>%
+        replace_with_na_all(condition = ~.x=="")
+
+missing_count <- training %>%
+        summarise_all(funs(sum(is.na(.))))
+missing_count <- as.vector(missing_count==0)
+training <- training[,missing_count]
+
+training <- training[,6:60]
+```
+
+
+I do the same processing for validation set.
+```{r}
+validation <- validation %>%
+        replace_with_na_all(condition = ~.x=="")
+
+missing_count <- validation %>%
+        summarise_all(funs(sum(is.na(.))))
+missing_count <- as.vector(missing_count==0)
+validation <- validation[,missing_count]
+
+validation <- validation[,6:60]
+validation$classe<- as.character(validation$classe)
+validation$classe <-as.factor(validation$classe)
+```
+
+
+ Check for colinearity in training set.
+```{r}
+library(corrplot)
+corrMat <- cor(training[,-1])
+corrplot(corrMat, method = "color", type = "lower", tl.cex = 0.8, tl.col = "black")
+```
+
+ There are just a few variables that are highly correlated, so there is no need for PCA analysis.
+ Now, we will fit a random forest classifier. Repeated CV can be used but it would take too long to compute, Out of bag error is estimated internally as 0.25%.
+```{r}
+training$classe<- as.character(training$classe)
+training$classe <-as.factor(training$classe)
+
+#fitControl <- trainControl(method = "repeatedcv", number=10,repeats=10)
+
+modelrf <- randomForest(classe ~ ., data=training )
+
+```
+
+```{r}
+modelrf
+```
+
+ Variable importance based on Gini index is also produced by random forest
+```{r}
+importance(modelrf)
+```
+
+
+ Now we produce confussion matrix to check the performance of our model on the validation set
+
+```{r}
+predict <- predict(modelrf, newdata=validation)
+cfm <- confusionMatrix(predict,validation$classe)
+cfm
+```
+
+Accuracy of the random forest model is 99.85%
+
+## Model test
+ We need to do same transformation on test set as we did on training and validation set
+
+
+
+```{r}
+testing <- testing %>%
+        replace_with_na_all(condition = ~.x=="")
+
+missing_count <- testing %>%
+        summarise_all(funs(sum(is.na(.))))
+missing_count <- as.vector(missing_count==0)
+testing <- testing[,missing_count]
+
+testing <- testing[,6:60]
+```
+
+ Predicting testing labels
+```{r}
+predict(modelrf,newdata=testing)
+```
+
+
